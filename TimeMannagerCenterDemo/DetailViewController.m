@@ -18,28 +18,21 @@
 @property(nonatomic,strong) XLCircleProgress *circle;
 
 @property(nonatomic, strong) UIPanGestureRecognizer *panGestureRecognizer;//添加
+//全局NSTimer
 @property(nonatomic,strong) NSTimer *countTtimer;
+//总的时间统计，默认时60秒
 @property(nonatomic,assign) int timeCount;
 //设置多少时间可以得到一个红包,可以从后台获取
 @property(nonatomic,assign) float setReadingTimeWithOneRedPacket;//（1/60 = ）1分钟 - （1/120）2分钟
 //记录tableViewContentOffsizeY
 @property(nonatomic,strong) NSMutableArray *reconArray;
-//记录持续5秒的偏移对比
+//记录持续5秒的ContentOffsize偏移对比
 @property(nonatomic,assign) int reconContentOffsizeYValueCount;
-//
-@property(nonatomic,assign) float finallProgressValue;
-
+@property(nonatomic,assign) double everySecond;
 @end
 
 @implementation DetailViewController
 
-
-
--(void)viewWillAppear:(BOOL)animated{
-    [super viewWillAppear:animated];
-    
-//    _countTtimer = [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(countTime:) userInfo:nil repeats:YES];
-}
 
 -(void)viewWillDisappear:(BOOL)animated{
     [super viewWillDisappear:animated];
@@ -71,7 +64,9 @@
     //[_myTableView setContentOffset:CGPointZero];
     [self.view addSubview:_myTableView];
     
+    _setReadingTimeWithOneRedPacket = 120;
     _reconContentOffsizeYValueCount = 1;
+    _everySecond = 1/_setReadingTimeWithOneRedPacket;
 
     [self addCircle];
     
@@ -89,51 +84,47 @@
 }
 -(void)countTime:(NSTimer *)timer{
     
+    if (_circle.progress >= 0.9999999) {
+        //100%,关闭定时器
+        _circle.progress = 1;
+        [_countTtimer setFireDate:[NSDate distantFuture]];
+        
+    }else{
+        
+        [UIView animateWithDuration:1 animations:^{
+            __weak __typeof__(self) weakSelf = self;
+            weakSelf.circle.progress += weakSelf.everySecond;// (1/60)0.01666667 (1/120)0.00833333
+        }];
+        
+        //记录前5个偏移值，存入数组。为首次进入页面的判断
+        if (_reconContentOffsizeYValueCount == 6) {
 
-        if (_circle.progress >=1) {
-            _circle.progress = 1;
-            //100%,关闭定时器
-            [_countTtimer setFireDate:[NSDate distantFuture]];
-        }else{
-            
-            //
-            _timeCount ++;
-            _setReadingTimeWithOneRedPacket = 60;
-            float everySecond = 1/_setReadingTimeWithOneRedPacket;
-            
-            //_circle.progress = _timeCount * everySecond;// (1/60)0.01666667 (1/120)0.00833333
-            
-            [UIView animateWithDuration:0.5 animations:^{
-                 __weak __typeof__(self) weakSelf = self;
-                weakSelf.circle.progress = weakSelf.timeCount * everySecond;// (1/60)0.01666667 (1/120)0.00833333
-            }];
-            
-            //float y = _myTableView.contentOffset.y;
-            
-            if (_reconContentOffsizeYValueCount == 6) {
-                
-                
-                if ([_reconArray[0] isEqualToString:_reconArray[4]]) {
-                    //关闭定时器
-                    [_countTtimer setFireDate:[NSDate distantFuture]];
-                    [_reconArray removeAllObjects];
-                    _reconContentOffsizeYValueCount = 1;
-                }
-                
-            }else{
-                
-                [self.reconArray addObject:[NSString stringWithFormat:@"%lf",_myTableView.contentOffset.y]];
-                _reconContentOffsizeYValueCount ++;
+            if ([_reconArray[0] isEqualToString:_reconArray[4]]) {
+                //关闭定时器
+                [_countTtimer setFireDate:[NSDate distantFuture]];
+                [_reconArray removeAllObjects];
+                _reconContentOffsizeYValueCount = 1;
             }
-            
+
+        }else{
+            //主线程将偏移量存储到数组，进行数组元素的比对
+            [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+                
+                __weak __typeof__(self) weakSelf = self;
+                [weakSelf.reconArray addObject:[NSString stringWithFormat:@"%lf",weakSelf.myTableView.contentOffset.y]];
+                NSLog(@"%@",self.reconArray);
+            }];
+            _reconContentOffsizeYValueCount ++;
         }
+        
+    }
+    //
+    _timeCount ++;
     
 //    NSLog(@"%lf,_timeCount = %d,_reconArray count = %lu,_reconContentOffsizeYValueCount = %d,%@,%f",_circle.progress,_timeCount,(unsigned long)_reconArray.count,_reconContentOffsizeYValueCount,_reconArray,_myTableView.contentOffset.y);
-    
 }
 
--(void)addCircle
-{
+- (void)addCircle{
 
     _circle = [[XLCircleProgress alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
     _circle.center = CGPointMake(screen_width - _circle.frame.size.width/2, screen_heght/2);
@@ -145,7 +136,8 @@
     NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
     if ([userDefaults valueForKey:@"totalReadTimeRecond"]) {
         _timeCount = [[userDefaults valueForKey:@"totalReadTimeRecond"] intValue];
-        _circle.progress = _timeCount * 0.01666667;
+        double everySecond = 1/_setReadingTimeWithOneRedPacket;
+        _circle.progress = _timeCount * everySecond;
     }else{
         _circle.progress = 0;
         _timeCount = 0;
@@ -160,12 +152,12 @@
 }
 
 //tableView
--(CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
     
     return 60;
 }
 
--(UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cellID"];
     if (!cell) {
@@ -176,11 +168,11 @@
     return cell;
 }
 
--(NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
     
     return 50;
 }
-
+//滑动事件
 - (void)dragViewMoved:(UIPanGestureRecognizer *)panGestureRecognizer
 {
     if (panGestureRecognizer.state == UIGestureRecognizerStateChanged) {
@@ -191,7 +183,7 @@
         
         CGPoint newCenter = CGPointMake(panGestureRecognizer.view.center.x+ translation.x,
                                         panGestureRecognizer.view.center.y + translation.y);
-        //    限制屏幕范围：
+        //    限制屏幕拖动范围
         newCenter.y = MAX(panGestureRecognizer.view.frame.size.height/2 + 64, newCenter.y);
         newCenter.y = MIN(self.view.frame.size.height - panGestureRecognizer.view.frame.size.height/2, newCenter.y);
         newCenter.x = MAX(panGestureRecognizer.view.frame.size.width/2, newCenter.x);
@@ -206,23 +198,22 @@
         
         CGPoint translation = [panGestureRecognizer translationInView:self.view];
         
+        //半屏判断
         if (panGestureRecognizer.view.center.x >= screen_width/2) {
             
-           panGestureRecognizer.view.center = CGPointMake(screen_width - panGestureRecognizer.view.frame.size.width/2,
+            panGestureRecognizer.view.center = CGPointMake(screen_width - panGestureRecognizer.view.frame.size.width/2,
                         panGestureRecognizer.view.center.y + translation.y);
             
-             [panGestureRecognizer setTranslation:CGPointZero inView:self.view];
+            [panGestureRecognizer setTranslation:CGPointZero inView:self.view];
         }else{
             
             panGestureRecognizer.view.center = CGPointMake(panGestureRecognizer.view.frame.size.width/2,
                                                            panGestureRecognizer.view.center.y + translation.y);
             [panGestureRecognizer setTranslation:CGPointZero inView:self.view];
         }
-        
-        
     }
 }
--(void)redPacketWasTap:(UITapGestureRecognizer *)tapGestureRecognizer{
+- (void)redPacketWasTap:(UITapGestureRecognizer *)tapGestureRecognizer{
     
     NSLog(@"redPacketWasTap delegate");
     
@@ -239,10 +230,7 @@
 //----scrollView代理方法-------
 -(void)scrollViewDidScroll:(UIScrollView *)scrollView{
     
-    //_isScrolling = YES;
-    //_tableViewContentOffsizeY = scrollView.contentOffset.y;
 }
-
 //开始拽动滚动
 -(void)scrollViewWillBeginDragging:(UIScrollView *)scrollView{
     
@@ -250,34 +238,38 @@
     [_countTtimer setFireDate:[NSDate distantPast]];
 }
 //滚动视图减速完成，滚动将停止时，调用该方法
--(void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView{
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView{
 
     //延迟关闭定时器5秒钟
-    [self performSelector:@selector(delayFor5Second) withObject:nil afterDelay:5];
+    [self performSelector:@selector(delayFor5Second) withObject:nil afterDelay:4];
 }
 // 当滚动视图动画完成后，调用该方法，如果没有动画，那么该方法将不被调用
--(void)scrollViewDidEndScrollingAnimation:(UIScrollView *)scrollView{
+- (void)scrollViewDidEndScrollingAnimation:(UIScrollView *)scrollView{
+    
     //NSLog(@"scrollViewDidEndScrollingAnimation");
     // 有效的动画方法为：
     //    - (void)setContentOffset:(CGPoint)contentOffset animated:(BOOL)animated 方法
     //    - (void)scrollRectToVisible:(CGRect)rect animated:(BOOL)animated 方法
-    
 }
--(void)delayFor5Second{
+- (void)delayFor5Second{
     
     //关闭定时器
     [_countTtimer setFireDate:[NSDate distantFuture]];
 }
--(NSMutableArray *)reconArray{
+
+- (NSMutableArray *)reconArray{
     
     if (!_reconArray) {
         _reconArray = [[NSMutableArray alloc] init];
     }
     return _reconArray;
 }
--(void)dealloc{
+
+- (void)dealloc{
     [_countTtimer invalidate];
+    _countTtimer = nil;
 }
+
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.

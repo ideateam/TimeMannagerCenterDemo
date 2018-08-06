@@ -73,8 +73,18 @@
     _circle.progress = progress;
     
     [self performSelectorOnMainThread:@selector(updatePercentLabel) withObject:nil waitUntilDone:YES];
+    
+//    if (_circle.progress >= 1) {
+//        _backImageView.image = [UIImage imageNamed:@"redpackge"];
+//    }
 }
 -(void)updatePercentLabel{
     _percentLabel.text = [NSString stringWithFormat:@"%.0f%%",_circle.progress*100];
+    
+    if (_circle.progress < 0.5) {
+        _backImageView.alpha = 0.5;
+    }else{
+        _backImageView.alpha = _circle.progress/1;
+    }
 }
 @end
